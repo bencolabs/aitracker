@@ -6,6 +6,14 @@ import { PUBLIC_TOOL_MANIFEST } from "../../src/lib/tool-registry/public-manifes
 // magic number.
 const TOOL_COUNT = PUBLIC_TOOL_MANIFEST.tools.length;
 
+// Machine-bound scenarios below assert against the *real* local workspace
+// (Skills actually installed on this machine under the real HOME), which a
+// clean CI runner never has. They are gated behind the dedicated
+// local-workspace config and run on a developer machine:
+//   npx playwright test -c playwright.config.local-workspace.ts desktop.spec.ts full-system-smoke.spec.ts
+const hasLocalWorkspace =
+  (process.env.AITRACKER_E2E_LOCAL_WORKSPACE ?? "").length > 0;
+
 test.beforeEach(async ({ page }) => {
   // Fixed browser system language to zh-CN and no stored preference, ensuring the default language is Chinese
   // (Consistent with existing practice in locale.spec.ts; otherwise Playwright defaults to en-US in
@@ -99,6 +107,10 @@ test("首页展示活跃日历热力图与真实事件聚合", async ({ page }) 
 });
 
 test("Skill Hub 展示真实本地 Skill 数量", async ({ page }) => {
+  test.skip(
+    !hasLocalWorkspace,
+    "需真实本机 Skill 工作区（playwright.config.local-workspace.ts）",
+  );
   await page.goto("/skills");
 
   // PageBar summary shows the actual number of local Skills (13 on current machine).
@@ -109,6 +121,10 @@ test("Skill Hub 展示真实本地 Skill 数量", async ({ page }) => {
 });
 
 test("Skill 当前筛选结果支持多选和全选但不执行清理", async ({ page }) => {
+  test.skip(
+    !hasLocalWorkspace,
+    "需真实本机 Skill 工作区（playwright.config.local-workspace.ts）",
+  );
   test.setTimeout(120_000);
   // Skill asset management is in /skills (only local workspace after split, market is in separate /market);
   // The selection button is a button with aria-label "Select <name>" (non-native checkbox),

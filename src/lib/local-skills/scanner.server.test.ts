@@ -94,6 +94,10 @@ test("scans common agent roots without treating mtime as usage evidence", async 
     homeDirectory: root,
     dataDirectory,
     now: new Date(),
+    // The fixture mirrors the macOS/home detection layout (.aipyapp/.codex
+    // under HOME); AiPy and Codex have no Linux probe roots ("planned"), so
+    // pin the simulated platform to keep this portable across runners.
+    platform: "darwin",
   });
 
   // All verified Skill installation targets are exposed, including AiPy.
@@ -114,6 +118,9 @@ test("detects an installed Agent even when its skill directory is empty", async 
     const snapshot = await scanLocalSkills({
       homeDirectory: root,
       dataDirectory: join(root, APP_DATA_DIR),
+      // Codex is "planned" on Linux (no probe roots); pin macOS so the
+      // fixture's ~/.codex is a valid installation evidence.
+      platform: "darwin",
     });
     assert.equal(snapshot.skills.length, 0);
     assert.equal(snapshot.agents["Codex"].installed, true);
@@ -1116,13 +1123,16 @@ test("rejects installing into a tool that is not actually installed", async () =
   try {
     await writeFile(cursorBin, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     process.env.PATH = binDir;
-    // There is an executable file: it is considered installed and the verification passes.
-    await assertTargetToolInstalled("Cursor");
+    // There is an executable file: it is considered installed and the
+    // verification passes. The os is pinned because Cursor's platform plan is
+    // "planned" (not "supported") on Linux, which would skip the probe
+    // entirely and reject the install regardless of PATH.
+    await assertTargetToolInstalled("Cursor", { os: "macos" });
 
     // After removing the executable file: the IDE tool (Cursor) is not installed and must be rejected with a clear prompt.
     await rm(cursorBin);
     await assert.rejects(
-      assertTargetToolInstalled("Cursor"),
+      assertTargetToolInstalled("Cursor", { os: "macos" }),
       /errors\.skills\.toolNotInstalled/,
     );
 

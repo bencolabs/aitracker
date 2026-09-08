@@ -5,6 +5,14 @@ import { PUBLIC_TOOL_MANIFEST } from "../../src/lib/tool-registry/public-manifes
 // projects, so derive the expected count from the manifest, not a magic number.
 const TOOL_COUNT = PUBLIC_TOOL_MANIFEST.tools.length;
 
+// The "平台目录" scenario below asserts against the *real* local workspace
+// (installed agents and their actual data roots under the real HOME), which a
+// clean CI runner never has. It is gated behind the dedicated local-workspace
+// config and runs on a developer machine:
+//   npx playwright test -c playwright.config.local-workspace.ts desktop.spec.ts full-system-smoke.spec.ts
+const hasLocalWorkspace =
+  (process.env.AITRACKER_E2E_LOCAL_WORKSPACE ?? "").length > 0;
+
 const ROUTES = [
   "/",
   "/agents",
@@ -60,6 +68,10 @@ test.describe("全系统路由冒烟", () => {
 });
 
 test("数据来源页支持状态筛选和平台目录", async ({ page }) => {
+  test.skip(
+    !hasLocalWorkspace,
+    "需真实本机 Agent 工作区（playwright.config.local-workspace.ts）",
+  );
   await page.goto("/sources", {
     waitUntil: "domcontentloaded",
     timeout: 90_000,

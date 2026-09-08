@@ -28,10 +28,11 @@ import { AppError } from "../errors";
 import { fetchExternal } from "../http/external-request.server.ts";
 import { AI_TOOLS } from "../tools/catalog.ts";
 import { RUNTIME_POLICY } from "../../app/runtime-policy.generated.ts";
-import { getTool } from "../tool-registry/registry.ts";
+import { getTool, type PlatformOs } from "../tool-registry/registry.ts";
 import {
   detectToolExecutables,
   detectToolInstallations,
+  osFromProcess,
   type ToolInstallationFact,
 } from "../tools/detection.server.ts";
 import {
@@ -626,6 +627,13 @@ interface SkillOpOptions {
   homeDirectory?: string;
   dataDirectory?: string;
   stateRepository?: SkillStateRepository;
+  /**
+   * Test seam: pin the platform whose executable probe runs. IDE tools like
+   * Cursor are "planned" (not "supported") on Linux, so a PATH-based
+   * verification test would always be rejected there; production callers
+   * omit this and probe for the current OS.
+   */
+  os?: PlatformOs;
 }
 
 /** Parse the injected data directory: explicit dataDirectory takes precedence, otherwise homeDirectory follows. */
@@ -931,7 +939,13 @@ export async function scanLocalSkills(
     detectToolInstallations(
       AI_TOOLS,
       homeDirectory,
-      undefined,
+      // The platform plan decides which probe roots exist (e.g. AiPy and
+      // Codex are "planned", not "supported", on Linux). Tests that lay out a
+      // macOS-shaped fixture home must be able to pin the simulated platform;
+      // production callers omit `platform` and keep the current OS.
+      options.platform !== undefined
+        ? osFromProcess(options.platform)
+        : undefined,
       traversalSignal,
     ),
   ]);
@@ -1114,7 +1128,7 @@ export async function assertTargetToolInstalled(
   const toolDef = getTool(tool.id);
   const executables = toolDef?.detection.executable ?? [];
   if (executables.length === 0) return;
-  const found = await detectToolExecutables([tool]);
+  const found = await detectToolExecutables([tool], options.os);
   if ((found.get(tool.id)?.length ?? 0) === 0) {
     throw new AppError("errors.skills.toolNotInstalled", {
       agent: targetAgent,

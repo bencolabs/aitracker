@@ -1644,7 +1644,15 @@ test("AiPy: starts a session at its first USER message, not an earlier lifecycle
     }
 
     const session = soleSession(
-      (await scanLocalSessions({ homeDirectory: home, now: NOW })).sessions,
+      (
+        await scanLocalSessions({
+          homeDirectory: home,
+          now: NOW,
+          // The fixture lays out AiPy's macOS app-data path; AiPy's platform
+          // plan has no Linux roots, so pin the simulated platform.
+          platform: "darwin",
+        })
+      ).sessions,
     );
     assert.equal(session.source, "aipy");
     assert.equal(session.startedAt, "2026-08-05T10:00:00.000Z");

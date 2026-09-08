@@ -30,15 +30,23 @@ function session(
   };
 }
 
-const NOW = new Date("2026-08-12T14:00:00+08:00");
+// Local-date helpers: `filterDistillationSessions` buckets by the *machine's*
+// local day boundaries, so fixtures must be built from local date parts
+// instead of a hardcoded offset, otherwise the assertions shift when the
+// suite runs in another timezone (e.g. UTC on CI).
+function atLocal(y: number, mo: number, d: number, h = 0, mi = 0): string {
+  return new Date(y, mo - 1, d, h, mi).toISOString();
+}
+
+const NOW = new Date(2026, 7, 12, 14, 0);
 
 test("filterDistillationSessions applies today and rolling ranges to real timestamps", () => {
   const sessions = [
-    session("today", "2026-08-12T00:05:00+08:00"),
-    session("seven-days", "2026-08-06T23:59:00+08:00"),
-    session("thirty-days", "2026-07-14T08:00:00+08:00"),
-    session("outside", "2026-07-13T23:59:00+08:00"),
-    session("future", "2026-08-13T00:00:00+08:00"),
+    session("today", atLocal(2026, 8, 12, 0, 5)),
+    session("seven-days", atLocal(2026, 8, 6, 23, 59)),
+    session("thirty-days", atLocal(2026, 7, 14, 8, 0)),
+    session("outside", atLocal(2026, 7, 13, 23, 59)),
+    session("future", atLocal(2026, 8, 13, 0, 0)),
     session("legacy", "not-a-timestamp"),
   ];
 

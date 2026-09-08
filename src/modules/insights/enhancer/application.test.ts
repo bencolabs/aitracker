@@ -23,7 +23,11 @@ import {
   type InsightExecutionRecord,
 } from "./application.ts";
 
-const FIXED_NOW = 1_700_000_000_000;
+// Built from local date parts at noon: cache identities embed a local-date
+// key, and tests advance `nowMs` by up to 2×TTL, so the fixed instant must
+// never sit near a local midnight boundary in any timezone. Local noon plus
+// two hours can never cross into the next local day.
+const FIXED_NOW = new Date(2026, 0, 15, 12, 0, 0).getTime();
 
 function keyFor(identity: InsightCacheIdentity): string {
   return JSON.stringify([

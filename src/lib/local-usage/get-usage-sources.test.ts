@@ -8,11 +8,17 @@ import { deriveUsageSources } from "./get-usage-sources.ts";
 
 const HOME = "/Users/x";
 
+// These are pure projection tests over the macOS path plan (the fixture HOME
+// and roots are POSIX/macOS-shaped). Pin the os explicitly: the registry marks
+// most tools as linux "planned", so deriving facts from the runner's platform
+// (e.g. ubuntu CI) would empty every probe root and flip these tools to
+// "not-installed" no matter what the fixture contains.
 function installations(...roots: string[]) {
   return deriveToolInstallationFacts(
     AI_TOOLS,
     new Set(roots.map((root) => `${HOME}/${root}`)),
     HOME,
+    "macos",
   );
 }
 

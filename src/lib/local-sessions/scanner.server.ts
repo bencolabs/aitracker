@@ -6,6 +6,7 @@ import { createInterface } from "node:readline";
 import { DatabaseSync } from "node:sqlite";
 
 import { ENV } from "../app-config";
+import { osFromProcess } from "../tools/detection.server.ts";
 import { readDshSessionLog } from "../local-usage/dsh-zstd.ts";
 import { canonicalizeProjectIdentity } from "../local-usage/project-path.server.ts";
 import {
@@ -1802,7 +1803,13 @@ export async function scanLocalSessions(
       ? isolatedUsageHome
       : homedir());
   const registry = options.registry ?? getDefaultRegistry();
-  const os = currentPlatformOs();
+  // Resolve scan roots against the injected platform when provided (test
+  // seam): platform plans differ per os, and fixture tests simulate the
+  // macOS layout on any runner.
+  const os =
+    options.platform !== undefined
+      ? osFromProcess(options.platform)
+      : currentPlatformOs();
   const env: PlatformEnv = process.env;
 
   const perTool = await Promise.all(

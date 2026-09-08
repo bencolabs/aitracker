@@ -60,11 +60,29 @@ async function preparePage(browser: Browser): Promise<{
   return { page, close: () => context.close() };
 }
 
+/**
+ * /distill mounts a one-time first-run guide modal after hydration. While a
+ * Radix modal is open the app marks the background content as aria-hidden,
+ * which hides the sidebar links from role-based locators — the benchmark
+ * would otherwise stall when navigating away from /distill. Consume the modal
+ * whenever it is present, right before a sidebar navigation.
+ */
+async function dismissGuideIfOpen(page: Page): Promise<void> {
+  const dismiss = page.getByRole("button", { name: "开始使用" });
+  try {
+    await dismiss.waitFor({ state: "visible", timeout: 2_500 });
+    await dismiss.click();
+  } catch {
+    // No guide modal on this page (or it already appeared and was consumed).
+  }
+}
+
 async function openFromSidebar(
   page: Page,
   route: string,
   label: string,
 ): Promise<number> {
+  await dismissGuideIfOpen(page);
   const renderedName = `aitracker:navigation:rendered:${route}`;
   const startedAt = performance.now();
   await page.evaluate((name) => performance.clearMarks(name), renderedName);
@@ -82,10 +100,42 @@ async function openFromSidebar(
   return performance.now() - startedAt;
 }
 
+/**
+ * Best-effort dismissal of the /distill first-run guide before benchmarking.
+ * The guide preference is persisted over a fire-and-forget server request and
+ * the modal only appears after hydration, so probe a few times until a probe
+ * page no longer shows it. `openFromSidebar` additionally consumes the modal
+ * on sight, so a missed probe can never stall the loop.
+ */
+async function dismissFirstRunGuide(browser: Browser): Promise<void> {
+  const context = await browser.newContext();
+  try {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const page = await context.newPage();
+      await page.goto("/distill", { waitUntil: "domcontentloaded" });
+      const dismiss = page.getByRole("button", { name: "开始使用" });
+      try {
+        await dismiss.waitFor({ state: "visible", timeout: 8_000 });
+      } catch {
+        // Not shown: the guide is already dismissed for this workspace.
+        await page.close();
+        return;
+      }
+      await dismiss.click();
+      // Leave the click's server request time to finish before probing again.
+      await page.waitForTimeout(750);
+      await page.close();
+    }
+  } finally {
+    await context.close();
+  }
+}
+
 test("route opening benchmark reports first-open and cached navigation latency", async ({
   browser,
 }, testInfo: TestInfo) => {
   test.setTimeout(15 * 60_000);
+  await dismissFirstRunGuide(browser);
   const samples: RouteSample[] = [];
 
   for (const [route, label] of routes) {
