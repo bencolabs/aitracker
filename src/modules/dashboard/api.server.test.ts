@@ -255,13 +255,15 @@ test("dashboard V2 projection contains only aggregate-safe context and no sessio
     weeklyReports: { count: null, available: false },
     monthlyReports: { count: null, available: false },
   });
+  // pi, omp and Hermes Agent gained usage readers (milestone v1.0.1), so the
+  // supported count grows by three over the frozen baseline.
   assert.equal(
     result.tools.filter((tool) => tool.usageSupport !== "unsupported").length,
-    20,
+    23,
   );
   assert.equal(
     result.tools.filter((tool) => tool.usageSupport === "unsupported").length,
-    16,
+    13,
   );
 });
 
