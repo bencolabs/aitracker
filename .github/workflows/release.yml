@@ -163,6 +163,7 @@ jobs:
       - name: Prepare release notes
         shell: bash
         run: |
+          version="${GITHUB_REF_NAME#v}"
           if [[ "$RELEASE_CHANNEL" == "stable" ]]; then
             cat > release-notes.md <<'EOF'
           # AITracker v1.0.0
@@ -209,6 +210,8 @@ jobs:
 
           See the [README](https://github.com/estelwalks/aitracker#readme) for the full feature overview, development commands, privacy model, and language versions.
           EOF
+            sed -i "s/v1\.0\.0/v${version}/" release-notes.md
+            sed -i "s/@estelwalks\/aitracker@1\.0\.0/@estelwalks\/aitracker@${version}/" release-notes.md
             echo "RELEASE_TITLE=AITracker $GITHUB_REF_NAME" >> "$GITHUB_ENV"
           else
             cat > release-notes.md <<'EOF'
