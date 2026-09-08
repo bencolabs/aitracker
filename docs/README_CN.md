@@ -70,11 +70,11 @@ npm run dev:desktop
 也可以直接下载最新 Release 的安装包：
 
 - macOS（Apple Silicon）：
-  [AITracker-1.0.0-arm64.dmg](https://github.com/estelwalks/aitracker/releases/download/v1.0.0/AITracker-1.0.0-arm64.dmg)
+  [AITracker-1.0.0-arm64.dmg](https://github.com/estelwalks/aitracker/releases/download/v1.0.1/AITracker-1.0.0-arm64.dmg)
 - macOS（Intel）：
-  [AITracker-1.0.0-x64.dmg](https://github.com/estelwalks/aitracker/releases/download/v1.0.0/AITracker-1.0.0-x64.dmg)
+  [AITracker-1.0.0-x64.dmg](https://github.com/estelwalks/aitracker/releases/download/v1.0.1/AITracker-1.0.0-x64.dmg)
 - Windows（x64）：
-  [AITracker-Setup-1.0.0-x64.exe](https://github.com/estelwalks/aitracker/releases/download/v1.0.0/AITracker-Setup-1.0.0-x64.exe)
+  [AITracker-Setup-1.0.0-x64.exe](https://github.com/estelwalks/aitracker/releases/download/v1.0.1/AITracker-Setup-1.0.0-x64.exe)
 
 所有版本可以在 [Releases 页面](https://github.com/estelwalks/aitracker/releases/latest) 查看。
 
@@ -86,7 +86,7 @@ npm run dev:desktop
 如果已安装 Node.js 和 npm，可以运行：
 
 ```bash
-npx --yes @estelwalks/aitracker@1.0.0
+npx --yes @estelwalks/aitracker@1.0.1
 ```
 
 此命令会下载并打开桌面安装程序。
@@ -94,7 +94,7 @@ npx --yes @estelwalks/aitracker@1.0.0
 如果 npm 配置使用的镜像中没有这个包，可以显式使用官方 npm registry：
 
 ```bash
-npx --yes --registry=https://registry.npmjs.org @estelwalks/aitracker@1.0.0
+npx --yes --registry=https://registry.npmjs.org @estelwalks/aitracker@1.0.1
 ```
 
 #### Homebrew（macOS）

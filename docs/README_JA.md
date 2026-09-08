@@ -72,11 +72,11 @@ npm run dev:desktop
 最新リリースのインストーラーを直接ダウンロードすることもできます：
 
 - macOS（Apple Silicon）：
-  [AITracker-1.0.0-arm64.dmg](https://github.com/estelwalks/aitracker/releases/download/v1.0.0/AITracker-1.0.0-arm64.dmg)
+  [AITracker-1.0.0-arm64.dmg](https://github.com/estelwalks/aitracker/releases/download/v1.0.1/AITracker-1.0.0-arm64.dmg)
 - macOS（Intel）：
-  [AITracker-1.0.0-x64.dmg](https://github.com/estelwalks/aitracker/releases/download/v1.0.0/AITracker-1.0.0-x64.dmg)
+  [AITracker-1.0.0-x64.dmg](https://github.com/estelwalks/aitracker/releases/download/v1.0.1/AITracker-1.0.0-x64.dmg)
 - Windows（x64）：
-  [AITracker-Setup-1.0.0-x64.exe](https://github.com/estelwalks/aitracker/releases/download/v1.0.0/AITracker-Setup-1.0.0-x64.exe)
+  [AITracker-Setup-1.0.0-x64.exe](https://github.com/estelwalks/aitracker/releases/download/v1.0.1/AITracker-Setup-1.0.0-x64.exe)
 
 すべてのリリースは [Releases ページ](https://github.com/estelwalks/aitracker/releases/latest) で確認できます。
 
@@ -88,7 +88,7 @@ npm run dev:desktop
 Node.jsとnpmをインストール済みの場合は、次のコマンドを実行します。
 
 ```bash
-npx --yes @estelwalks/aitracker@1.0.0
+npx --yes @estelwalks/aitracker@1.0.1
 ```
 
 このコマンドはデスクトップインストーラーをダウンロードして開きます。
@@ -96,7 +96,7 @@ npx --yes @estelwalks/aitracker@1.0.0
 使用中のnpmミラーにこのパッケージがない場合は、公式npmレジストリを明示します。
 
 ```bash
-npx --yes --registry=https://registry.npmjs.org @estelwalks/aitracker@1.0.0
+npx --yes --registry=https://registry.npmjs.org @estelwalks/aitracker@1.0.1
 ```
 
 #### Homebrew（macOS）

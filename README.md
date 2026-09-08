@@ -75,11 +75,11 @@ To run the browser development server only, use `npm run dev`.
 You can download the installer of the latest release directly:
 
 - macOS (Apple Silicon):
-  [AITracker-1.0.0-arm64.dmg](https://github.com/estelwalks/aitracker/releases/download/v1.0.0/AITracker-1.0.0-arm64.dmg)
+  [AITracker-1.0.0-arm64.dmg](https://github.com/estelwalks/aitracker/releases/download/v1.0.1/AITracker-1.0.0-arm64.dmg)
 - macOS (Intel):
-  [AITracker-1.0.0-x64.dmg](https://github.com/estelwalks/aitracker/releases/download/v1.0.0/AITracker-1.0.0-x64.dmg)
+  [AITracker-1.0.0-x64.dmg](https://github.com/estelwalks/aitracker/releases/download/v1.0.1/AITracker-1.0.0-x64.dmg)
 - Windows (x64):
-  [AITracker-Setup-1.0.0-x64.exe](https://github.com/estelwalks/aitracker/releases/download/v1.0.0/AITracker-Setup-1.0.0-x64.exe)
+  [AITracker-Setup-1.0.0-x64.exe](https://github.com/estelwalks/aitracker/releases/download/v1.0.1/AITracker-Setup-1.0.0-x64.exe)
 
 All releases are listed on the
 [Releases page](https://github.com/estelwalks/aitracker/releases/latest).
@@ -93,7 +93,7 @@ and their corresponding distribution metadata have been published.
 With Node.js and npm installed, run:
 
 ```bash
-npx --yes @estelwalks/aitracker@1.0.0
+npx --yes @estelwalks/aitracker@1.0.1
 ```
 
 This command downloads and opens the desktop installer.
@@ -102,7 +102,7 @@ If your npm configuration uses a mirror that does not contain the package, use
 the official npm registry explicitly:
 
 ```bash
-npx --yes --registry=https://registry.npmjs.org @estelwalks/aitracker@1.0.0
+npx --yes --registry=https://registry.npmjs.org @estelwalks/aitracker@1.0.1
 ```
 
 #### Homebrew (macOS)
