@@ -1,8 +1,10 @@
 /**
  * File-backed AES-256-GCM secret codec. The webapp has no Electron
  * `safeStorage` boundary, so model API keys are encrypted with a host-scoped
- * 256-bit key stored at `<dataRoot>/secure/secrets.key` (mode 0600, directory
- * 0700). The key is generated lazily on first use and cached for the process.
+ * 256-bit key stored at `<dataRoot>/<APP_DATA_DIR>/secure/secrets.key` (mode
+ * 0600, directory 0700). The key is generated lazily on first use and cached
+ * for the process. A key left at the pre-fix `<dataRoot>/secure/secrets.key`
+ * is still read so existing secrets keep decrypting.
  *
  * This gives at-rest protection against casual SQLite inspection: `secure_secrets`
  * rows contain only authenticated ciphertext, never the plaintext key. It is not
@@ -19,12 +21,22 @@ import { randomBytes, createCipheriv, createDecipheriv } from "node:crypto";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
+import { APP_DATA_DIR } from "../../../lib/app-config.ts";
 import type {
   EncryptedModelSecret,
   ModelSecretCodec,
 } from "./sqlite-model-profile-repository.server.ts";
 
-const KEY_PATH = "secure/secrets.key";
+/**
+ * Key file location, kept inside the application data directory alongside the
+ * SQLite database instead of directly under the data root. A bare `secure/`
+ * folder in `$HOME` is easy to sync to cloud storage or delete by accident,
+ * and both outcomes are worse here than anywhere else: the file is the only
+ * thing standing between an on-disk ciphertext and every stored provider key.
+ */
+const KEY_PATH = join(APP_DATA_DIR, "secure", "secrets.key");
+/** Pre-fix location (`<dataRoot>/secure/secrets.key`); read-only fallback. */
+const LEGACY_KEY_PATH = join("secure", "secrets.key");
 const IV_LENGTH = 12;
 const TAG_LENGTH = 16;
 /** Also the `error.code` carried on failures so the server-fn layer maps it. */
@@ -55,47 +67,65 @@ export function createFileSecretCodec(
   options: FileSecretCodecOptions,
 ): ModelSecretCodec {
   const keyPath = join(options.dataRoot, KEY_PATH);
+  const legacyKeyPath = join(options.dataRoot, LEGACY_KEY_PATH);
   let cachedKey: Buffer | undefined;
 
-  async function readKeyFile(): Promise<Buffer> {
-    const key = await readFile(keyPath);
+  async function readKeyFile(path: string = keyPath): Promise<Buffer> {
+    const key = await readFile(path);
     return key;
+  }
+
+  function isMissing(error: unknown): boolean {
+    return (
+      error instanceof Error &&
+      (error as NodeJS.ErrnoException).code === "ENOENT"
+    );
   }
 
   async function loadKey(): Promise<Buffer> {
     if (cachedKey) return cachedKey;
     let key: Buffer;
+    // The path the key was actually taken from; a legacy key keeps living where
+    // it is, because moving it would break a concurrently running older build.
+    let resolvedPath = keyPath;
     try {
       key = await readKeyFile();
     } catch (readError) {
-      if (
-        !(readError instanceof Error) ||
-        (readError as NodeJS.ErrnoException).code !== "ENOENT"
-      ) {
+      if (!isMissing(readError)) {
         throw codecFailure(readError);
       }
-      // First use: mint a fresh key. `wx` makes creation exclusive so a second
-      // process racing us falls back to reading the winner's key.
-      const fresh = randomBytes(32);
       try {
-        await mkdir(dirname(keyPath), { recursive: true, mode: 0o700 });
-        await writeFile(keyPath, fresh, { mode: 0o600, flag: "wx" });
-        key = fresh;
-      } catch (writeError) {
-        if (
-          writeError instanceof Error &&
-          (writeError as NodeJS.ErrnoException).code === "EEXIST"
-        ) {
-          key = await readKeyFile().catch((again) => {
-            throw codecFailure(again);
-          });
-        } else {
-          throw codecFailure(writeError);
+        // Installations created before the key moved under the app data
+        // directory keep their existing key so stored secrets stay readable.
+        key = await readKeyFile(legacyKeyPath);
+        resolvedPath = legacyKeyPath;
+      } catch (legacyError) {
+        if (!isMissing(legacyError)) {
+          throw codecFailure(legacyError);
+        }
+        // First use: mint a fresh key. `wx` makes creation exclusive so a second
+        // process racing us falls back to reading the winner's key.
+        const fresh = randomBytes(32);
+        try {
+          await mkdir(dirname(keyPath), { recursive: true, mode: 0o700 });
+          await writeFile(keyPath, fresh, { mode: 0o600, flag: "wx" });
+          key = fresh;
+        } catch (writeError) {
+          if (
+            writeError instanceof Error &&
+            (writeError as NodeJS.ErrnoException).code === "EEXIST"
+          ) {
+            key = await readKeyFile().catch((again) => {
+              throw codecFailure(again);
+            });
+          } else {
+            throw codecFailure(writeError);
+          }
         }
       }
     }
     // Best-effort hardening against umask loosening the file mode.
-    await chmod(keyPath, 0o600).catch(() => undefined);
+    await chmod(resolvedPath, 0o600).catch(() => undefined);
     cachedKey = key;
     return key;
   }

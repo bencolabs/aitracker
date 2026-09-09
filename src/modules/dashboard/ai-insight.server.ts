@@ -60,7 +60,7 @@ const INSIGHT_TTL_MS = 5 * 60 * 1000;
 const INSIGHT_TIMEOUT_MS = 20_000;
 const MAX_LABEL_LENGTH = 80;
 const SENSITIVE_CONTENT =
-  /(?:\/(?:Users|home|private|var|tmp)\/|[A-Za-z]:\\|\\\\|\b(?:sk|pk)-[A-Za-z0-9_-]{12,}\b|\bbearer\s+\S+|\b(?:api[ _-]?key|password|secret|authorization|cookie|credential)\b|\b(?:sudo|curl|wget|rm\s+-rf|npm\s+(?:install|publish))\b)/i;
+  /(?:(?:^|\s)~\/|\/(?:Users|home|private|var|tmp)\/|[A-Za-z]:\\|\\\\|\b(?:sk|pk)-[A-Za-z0-9_-]{12,}\b|\bbearer\s+\S+|\b(?:api[ _-]?key|password|secret|authorization|cookie|credential)\b|\b(?:sudo|curl|wget|rm\s+-rf|npm\s+(?:install|publish))\b)/i;
 
 const outputSchema = z
   .object({

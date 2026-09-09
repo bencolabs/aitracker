@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import { APP_DATA_DIR } from "../../../lib/app-config.ts";
 import { createFileSecretCodec } from "./file-secret-codec.server.ts";
 
 const ERROR_CODE = "errors.modelProfile.safeStorageUnavailable";
@@ -28,11 +29,11 @@ test("encrypt/decrypt roundtrips an API key", async (t) => {
   assert.equal(await codec.decrypt(secret), "sk-ant-test-0123456789");
 });
 
-test("key file is created under <dataRoot>/secure with 0600 mode", async (t) => {
+test("key file is created under the app data directory with 0600 mode", async (t) => {
   const dataRoot = fixture(t);
   const codec = createFileSecretCodec({ dataRoot });
   await codec.encrypt("sk-test-abcdefgh");
-  const keyPath = join(dataRoot, "secure", "secrets.key");
+  const keyPath = join(dataRoot, APP_DATA_DIR, "secure", "secrets.key");
   const { statSync } = await import("node:fs");
   const info = statSync(keyPath);
   assert.ok(info.isFile());
@@ -79,4 +80,29 @@ test("a second instance cannot decrypt with a different data root", async (t) =>
   const b = createFileSecretCodec({ dataRoot: dataRootB });
   const secret = await a.encrypt("sk-cross-root-0123456789");
   await assert.rejects(b.decrypt(secret));
+});
+
+test("a key left at the pre-fix location keeps decrypting existing secrets", async (t) => {
+  const dataRoot = fixture(t);
+  const legacyDirectory = join(dataRoot, "secure");
+  const { mkdirSync, writeFileSync, existsSync } = await import("node:fs");
+  const { randomBytes } = await import("node:crypto");
+  mkdirSync(legacyDirectory, { recursive: true, mode: 0o700 });
+  writeFileSync(join(legacyDirectory, "secrets.key"), randomBytes(32), {
+    mode: 0o600,
+  });
+
+  const codec = createFileSecretCodec({ dataRoot });
+  const secret = await codec.encrypt("sk-legacy-abcdefgh");
+  assert.equal(await codec.decrypt(secret), "sk-legacy-abcdefgh");
+  // The legacy key is adopted in place; no second key is minted, which would
+  // silently strand every secret already encrypted with the old one.
+  assert.equal(
+    existsSync(join(dataRoot, APP_DATA_DIR, "secure", "secrets.key")),
+    false,
+  );
+
+  // A fresh instance over the same root must reach the same key.
+  const reopened = createFileSecretCodec({ dataRoot });
+  assert.equal(await reopened.decrypt(secret), "sk-legacy-abcdefgh");
 });
