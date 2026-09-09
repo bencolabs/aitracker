@@ -91,7 +91,20 @@ test("baseline skill agents remain present in the live Skill rules", () => {
       (rule) => rule.toolId === expected.toolId,
     );
     assert.ok(live, `baseline skill agent "${expected.toolId}" missing`);
-    assert.deepEqual([...live.roots], [...expected.roots]);
+    // Expected diff (local: Claude Code plugin skills): claude-code also
+    // discovers skills shipped through the Claude Code plugin marketplace,
+    // which live outside `~/.claude/skills` and are therefore invisible to the
+    // frozen single-root baseline. The baseline roots must stay the *leading*
+    // entries so `roots[0]` — the install/sync write target — is unchanged and
+    // every appended root is discovery-only.
+    if (expected.toolId === "claude-code") {
+      assert.deepEqual(
+        [...live.roots].slice(0, expected.roots.length),
+        [...expected.roots],
+      );
+    } else {
+      assert.deepEqual([...live.roots], [...expected.roots]);
+    }
     assert.equal(live.envHome, expected.envHome);
     assert.deepEqual(
       [...(live.markers ?? ["SKILL.md", "skill.md"])],

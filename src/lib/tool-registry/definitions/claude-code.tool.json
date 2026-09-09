@@ -45,6 +45,10 @@
         {
           "base": "home",
           "path": ".claude/skills"
+        },
+        {
+          "base": "home",
+          "path": ".claude/plugins/marketplaces/ecc/skills"
         }
       ],
       "markers": [

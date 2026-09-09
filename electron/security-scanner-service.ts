@@ -62,7 +62,15 @@ interface ManagedSkillRoot {
  * electron/security-skill-roots.test.ts parity assertions.
  */
 export const MANAGED_SKILL_ROOTS: readonly ManagedSkillRoot[] = [
-  { agent: "Claude Code", toolId: "claude-code", suffixes: [".claude/skills"] },
+  {
+    agent: "Claude Code",
+    toolId: "claude-code",
+    // Mirrors the registry skill rule (parity-guarded by
+    // security-skill-roots.test.ts): plugin-marketplace skills are scanned too,
+    // so a malicious plugin skill cannot hide from the assessment simply by
+    // living outside `~/.claude/skills`.
+    suffixes: [".claude/skills", ".claude/plugins/marketplaces/ecc/skills"],
+  },
   {
     agent: "Codex",
     toolId: "codex",

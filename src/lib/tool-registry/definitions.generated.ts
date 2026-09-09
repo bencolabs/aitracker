@@ -49,6 +49,10 @@ export const RAW_TOOL_DEFINITIONS: readonly RawToolDefinition[] = [
           {
             "base": "home",
             "path": ".claude/skills"
+          },
+          {
+            "base": "home",
+            "path": ".claude/plugins/marketplaces/ecc/skills"
           }
         ],
         "markers": [
@@ -3457,4 +3461,4 @@ export const SHARED_POLICY_PACKS: SharedPolicyPacks = {
   }
 };
 
-export const TOOL_REGISTRY_VERSION: string = "bcbee2b9f33f3202";
+export const TOOL_REGISTRY_VERSION: string = "4c5067c24550fe92";
