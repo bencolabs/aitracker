@@ -15,7 +15,35 @@
  */
 
 export type ProfileMode = "official" | "custom";
-export type ProfileProtocol = "openai" | "openai-responses" | "anthropic";
+export type ProfileProtocol =
+  "openai" | "openai-responses" | "anthropic" | "claude-code";
+
+/**
+ * `claude-code` does not speak HTTP: it spawns the user's locally installed
+ * Claude Code CLI in headless mode and inherits that CLI's own credentials.
+ * It therefore has no API key, no auth header and no API base URL, so every
+ * HTTP-shaped code path must branch on this predicate before reading them.
+ */
+/**
+ * Narrow untrusted input (persisted rows, server-function payloads) to a
+ * supported protocol. Hand-written copies of this union have silently dropped
+ * or rejected new protocols at three separate layers; route every boundary
+ * check through here instead of re-listing the members.
+ */
+export function isProfileProtocol(value: unknown): value is ProfileProtocol {
+  return (
+    value === "openai" ||
+    value === "openai-responses" ||
+    value === "anthropic" ||
+    value === "claude-code"
+  );
+}
+
+export function isLocalProtocol(
+  protocol: ProfileProtocol,
+): protocol is "claude-code" {
+  return protocol === "claude-code";
+}
 
 /**
  * Auth header scheme used against the endpoint. Some Anthropic-format gateways
@@ -95,6 +123,13 @@ export const protocolMeta: Record<ProfileProtocol, ProtocolMeta> = {
     path: "POST /messages",
     auth: "x-api-key: <API Key> · anthropic-version: 2023-06-01",
   },
+  // No default endpoint: an empty endpoint means "no proxy", not "use a
+  // default base URL". See `effectiveProxyUrl`.
+  "claude-code": {
+    endpoint: "",
+    path: "spawn: claude -p --output-format json",
+    auth: "Local Claude Code session (no API key)",
+  },
 };
 
 /** Full profile as stored server-side. The apiKey is secret material. */
@@ -169,13 +204,16 @@ export interface ModelProfileTestResult {
 
 /**
  * Result of a "list remote models" request. `source: "remote"` means the list
- * came from the provider's `/models` endpoint; `source: "fallback"` means the
- * request failed and no model list is available.
+ * came from the provider's `/models` endpoint; `source: "local"` means it came
+ * from a provider that exposes no such endpoint and publishes a known set
+ * instead (the Claude Code CLI's aliases); `source: "fallback"` means the
+ * request failed and no model list is available. Only `"fallback"` is a
+ * failure — callers must not treat `"local"` as one.
  */
 export interface ModelListResult {
   readonly ok: boolean;
   readonly models?: readonly string[];
-  readonly source?: "remote" | "fallback";
+  readonly source?: "remote" | "local" | "fallback";
   readonly message?: string;
   readonly errorCode?: ModelProfileErrorCode;
 }
@@ -197,6 +235,20 @@ export function effectiveEndpoint(profile: {
   if (profile.mode === "official") return OFFICIAL_ENDPOINT;
   const trimmed = profile.endpoint?.trim();
   return trimmed || protocolMeta[profile.protocol ?? "openai"].endpoint;
+}
+
+/**
+ * Optional outbound proxy for the `claude-code` protocol. The profile reuses
+ * the `endpoint` column, which is unused by a protocol that makes no HTTP
+ * request of its own; an empty value means "spawn without proxy environment
+ * variables and inherit whatever the host process has".
+ */
+export function effectiveProxyUrl(profile: {
+  readonly protocol?: ProfileProtocol;
+  readonly endpoint?: string;
+}): string | undefined {
+  if (profile.protocol !== "claude-code") return undefined;
+  return profile.endpoint?.trim() || undefined;
 }
 
 /** Effective model id for a profile (recommended selection / stored / undefined). */
@@ -264,22 +316,30 @@ export function validateModelProfileInput(
   if (name.length > PROFILE_NAME_MAX)
     return { ok: false, errorCode: "errors.modelProfile.nameTooLong" };
 
+  const isLocal = input.mode === "custom" && input.protocol === "claude-code";
+
   if (input.mode === "custom") {
     if (
       input.protocol !== "openai" &&
       input.protocol !== "openai-responses" &&
-      input.protocol !== "anthropic"
+      input.protocol !== "anthropic" &&
+      input.protocol !== "claude-code"
     )
       return { ok: false, errorCode: "errors.modelProfile.invalidProtocol" };
 
+    // For claude-code the endpoint carries an optional proxy URL rather than
+    // an API base URL, but the same "http/https, no embedded credentials"
+    // rule applies to both.
     const endpoint = input.endpoint?.trim();
     if (endpoint && !validUrl(endpoint))
       return { ok: false, errorCode: "errors.modelProfile.invalidUrl" };
 
+    // The local CLI picks its own default model when none is given, so a
+    // claude-code profile may leave the field empty.
     const model = input.model?.trim();
-    if (!model)
+    if (!model && !isLocal)
       return { ok: false, errorCode: "errors.modelProfile.invalidModel" };
-    if (!MODEL_ID_PATTERN.test(model))
+    if (model && !MODEL_ID_PATTERN.test(model))
       return { ok: false, errorCode: "errors.modelProfile.invalidModel" };
   }
 
@@ -289,8 +349,10 @@ export function validateModelProfileInput(
       return { ok: false, errorCode: "errors.modelProfile.invalidModel" };
   }
 
+  // claude-code authenticates as the locally installed CLI, so it never
+  // carries an API key of its own.
   const apiKey = input.apiKey?.trim() ?? "";
-  if (input.mode === "custom" && !isUpdate && apiKey.length === 0)
+  if (input.mode === "custom" && !isLocal && !isUpdate && apiKey.length === 0)
     return { ok: false, errorCode: "errors.modelProfile.apiKeyRequired" };
   if (apiKey.length > 0 && !validKey(apiKey))
     return apiKey.length < PROFILE_API_KEY_MIN

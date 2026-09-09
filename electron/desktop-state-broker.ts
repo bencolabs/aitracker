@@ -12,7 +12,8 @@ import type { ModelConfig } from "@estelwalks/agent-threat-scanner";
 
 interface StoredModelProfile {
   readonly mode: "official" | "custom";
-  readonly protocol: "openai" | "openai-responses" | "anthropic";
+  readonly protocol:
+    "openai" | "openai-responses" | "anthropic" | "claude-code";
   readonly apiKey?: string;
   readonly endpoint?: string;
   readonly model?: string;
@@ -164,10 +165,10 @@ export function compactSecurityHistoryForTransport(
 }
 
 /** Maps the app's legacy profile label to the published scanner protocol. */
-function scannerProtocol(profile: StoredModelProfile): ScannerProtocol {
-  return profile.protocol === "openai"
-    ? "openai-completions"
-    : profile.protocol;
+function scannerProtocol(
+  protocol: Exclude<StoredModelProfile["protocol"], "claude-code">,
+): ScannerProtocol {
+  return protocol === "openai" ? "openai-completions" : protocol;
 }
 
 export interface DesktopStateBrokerOptions {
@@ -308,6 +309,9 @@ export class DesktopStateBroker {
       "/model-profile",
     );
     if (!profile?.apiKey) return undefined;
+    // The published scanner needs an HTTP endpoint and an API key; a
+    // claude-code profile spawns a local CLI and has neither.
+    if (profile.protocol === "claude-code") return undefined;
     const endpoint =
       profile.mode === "official"
         ? "https://api.deepseek.com/v1"
@@ -326,7 +330,7 @@ export class DesktopStateBroker {
       maxAgentTurns: 8,
     };
     // `provider` is the published scanner's protocol selector.
-    config.provider = scannerProtocol(profile);
+    config.provider = scannerProtocol(profile.protocol);
     return config as ModelConfig;
   }
 }

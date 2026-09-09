@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
+import { Readable } from "node:stream";
 import test from "node:test";
 
 import {
@@ -463,4 +465,102 @@ test("allowlist projection strips an unexpected path-like project label", () => 
     { label: "project", tokens: 70, events: 1 },
   ]);
   assert.doesNotMatch(JSON.stringify(aggregate), /\/Users\/|private-project/i);
+});
+
+// ---------------------------------------------------------------------------
+// claude-code: the insight routes to the local CLI, never over HTTP
+// ---------------------------------------------------------------------------
+
+const claudeCodeConfig: DashboardAIInsightRuntimeConfig = {
+  protocol: "claude-code",
+  auth: "bearer",
+  endpoint: "",
+  apiKey: "",
+  model: "haiku",
+  cliModel: "haiku",
+};
+
+/** Minimal `claude -p --output-format json` double; records what it received. */
+function fakeClaudeCli(received: { args?: readonly string[]; stdin?: string }) {
+  return ((_file: string, args: readonly string[]) => {
+    const child = new EventEmitter() as EventEmitter & {
+      stdout: Readable;
+      stderr: Readable;
+      stdin: { end(v: string): void; on(e: string, f: () => void): void };
+      kill(): void;
+    };
+    received.args = args;
+    const stdout = new Readable({ read: () => {} });
+    child.stdout = stdout;
+    child.stderr = new Readable({ read: () => {} });
+    child.stdin = {
+      end: (value: string) => {
+        received.stdin = value;
+      },
+      on: () => {},
+    };
+    child.kill = () => {};
+    queueMicrotask(() => {
+      stdout.push(
+        JSON.stringify({
+          subtype: "success",
+          is_error: false,
+          result: "```json\n" + validOutput() + "\n```",
+          usage: { input_tokens: 5, output_tokens: 50 },
+        }),
+      );
+      stdout.push(null);
+      stdout.once("end", () => child.emit("close", 0));
+    });
+    return child as never;
+  }) as never;
+}
+
+test("claude-code protocol spawns the CLI and makes no HTTP request", async () => {
+  const received: { args?: readonly string[]; stdin?: string } = {};
+  let fetchCalls = 0;
+  const service = createDashboardAIInsightService({
+    resolveConfig: async () => claudeCodeConfig,
+    spawn: fakeClaudeCli(received),
+    fetch: (async () => {
+      fetchCalls += 1;
+      throw new Error("the local protocol must not issue an HTTP request");
+    }) as typeof fetch,
+  });
+
+  const result = await service.refresh(input());
+  assert.equal(result.status, "ready");
+  assert.equal(fetchCalls, 0, "no HTTP request may be made");
+  assert.equal(result.model, "haiku");
+  assert.equal(result.insight?.insights.length, 1);
+});
+
+test("claude-code receives the same allowlisted aggregate, on stdin", async () => {
+  const received: { args?: readonly string[]; stdin?: string } = {};
+  const service = createDashboardAIInsightService({
+    resolveConfig: async () => claudeCodeConfig,
+    spawn: fakeClaudeCli(received),
+  });
+  await service.refresh(input());
+
+  assert.deepEqual(JSON.parse(received.stdin ?? ""), input());
+  // The payload must not reach argv, where other local users could read it.
+  assert.ok(!(received.args ?? []).some((arg) => arg.includes("totals")));
+  assert.doesNotMatch(
+    received.stdin ?? "",
+    /\/Users\/|\/home\/|sessionId|command|sk-/i,
+  );
+});
+
+test("claude-code keeps the call out of the log tree this app scans", async () => {
+  const received: { args?: readonly string[]; stdin?: string } = {};
+  const service = createDashboardAIInsightService({
+    resolveConfig: async () => claudeCodeConfig,
+    spawn: fakeClaudeCli(received),
+  });
+  await service.refresh(input());
+
+  // Without this the insight refresh would be recorded as the user's own
+  // Claude Code usage and counted by the scanner it feeds.
+  assert.ok((received.args ?? []).includes("--no-session-persistence"));
 });

@@ -25,11 +25,13 @@ import {
   PROFILE_API_KEY_MAX,
   PROFILE_API_KEY_MIN,
   PROFILE_ENDPOINT_MAX,
+  isProfileProtocol,
   validateModelProfileInput,
   type ModelListResult,
   type ModelProfileInput,
   type ModelProfileTestResult,
   type ModelProfileView,
+  type ProfileProtocol,
 } from "./model-profile.ts";
 
 const OPAQUE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -102,7 +104,7 @@ export function parseSetActiveModelProfileInput(
 export interface ListRemoteModelsInput {
   readonly id?: string;
   readonly mode: "official" | "custom";
-  readonly protocol?: "openai" | "openai-responses" | "anthropic";
+  readonly protocol?: ProfileProtocol;
   readonly auth?: "x-api-key" | "bearer";
   readonly apiKey?: string;
   readonly endpoint?: string;
@@ -121,9 +123,7 @@ function parseListRemoteModelsInput(value: unknown): ListRemoteModelsInput {
   const input: ListRemoteModelsInput = {
     mode: candidate.mode,
     ...(typeof candidate.id === "string" ? { id: candidate.id } : {}),
-    ...(candidate.protocol === "openai" ||
-    candidate.protocol === "openai-responses" ||
-    candidate.protocol === "anthropic"
+    ...(isProfileProtocol(candidate.protocol)
       ? { protocol: candidate.protocol }
       : {}),
     ...(candidate.auth === "x-api-key" || candidate.auth === "bearer"

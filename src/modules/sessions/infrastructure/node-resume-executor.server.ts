@@ -1,12 +1,13 @@
-import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { access, chmod, constants, mkdtemp, writeFile } from "node:fs/promises";
-import { delimiter, join, isAbsolute } from "node:path";
+import { spawn, type ChildProcess } from "node:child_process";
+import { chmod, mkdtemp, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import {
   buildResumeCommandTokens,
   isResumeSafeId,
 } from "../../../lib/local-sessions/resume-id.ts";
+import { resolveExecutableForLaunch } from "../../../lib/process/executable-path.server.ts";
 import type {
   ResumeCommandExecutor,
   ResumeCommandRequest,
@@ -25,80 +26,6 @@ export interface NodeResumeExecutorOptions {
    * only reachable via the login shell).
    */
   readonly resolveExecutable?: (file: string) => Promise<string> | string;
-}
-
-/** Cached login-shell PATH (macOS/Linux GUI apps don't inherit the shell PATH). */
-let loginPathCache: string | null | undefined;
-
-function pathDirectories(pathValue: string): string[] {
-  return pathValue.split(delimiter).filter(Boolean);
-}
-
-async function findExecutableInPath(
-  file: string,
-  pathValue: string,
-): Promise<string | null> {
-  const extensions =
-    process.platform === "win32"
-      ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM")
-          .split(";")
-          .filter(Boolean)
-      : [""];
-  for (const directory of pathDirectories(pathValue)) {
-    for (const extension of extensions) {
-      const candidate = join(directory, `${file}${extension.toLowerCase()}`);
-      try {
-        await access(
-          candidate,
-          process.platform === "win32" ? constants.F_OK : constants.X_OK,
-        );
-        return candidate;
-      } catch {
-        // keep looking
-      }
-    }
-  }
-  return null;
-}
-
-async function loginShellPath(): Promise<string | null> {
-  if (loginPathCache !== undefined) return loginPathCache;
-  loginPathCache = null;
-  if (process.platform === "win32") return null;
-  const shell = process.env.SHELL || "/bin/zsh";
-  try {
-    const value = await new Promise<string | null>((resolve) => {
-      execFile(
-        shell,
-        ["-lc", "printf '%s' \"$PATH\""],
-        { timeout: 5000, windowsHide: true },
-        (error, stdout) => resolve(error ? null : stdout.trim()),
-      );
-    });
-    if (value) loginPathCache = value;
-  } catch {
-    // keep the cached null fallback
-  }
-  return loginPathCache;
-}
-
-/**
- * Resolve a resume executable that may be missing from the GUI-launched
- * process PATH. Returns the file unchanged when it is a path or already
- * resolvable — otherwise the login-shell PATH is consulted (codex/claude/…
- * usually live there) and the absolute path is returned.
- */
-export async function resolveExecutableForLaunch(
-  file: string,
-): Promise<string> {
-  if (isAbsolute(file) || file.includes("/") || file.includes("\\"))
-    return file;
-  if (await findExecutableInPath(file, process.env.PATH ?? "")) return file;
-  const loginPath = await loginShellPath();
-  const resolved = loginPath
-    ? await findExecutableInPath(file, loginPath)
-    : null;
-  return resolved ?? file;
 }
 
 /**

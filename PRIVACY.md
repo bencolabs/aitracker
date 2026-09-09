@@ -43,11 +43,25 @@ Network access is feature-driven rather than required for local analytics:
 - the optional update check reads the public GitHub releases API for this
   repository; and
 - distillation, enhanced insights, or other model features send the selected
-  input to the model provider configured by the user.
+  input to the model provider configured by the user; and
+- a model profile using the **Claude Code (local)** protocol does not make an
+  HTTP request from AITracker at all. It starts the `claude` command-line tool
+  already installed on your computer and passes the same allowlisted input on
+  that process's standard input. That tool then contacts Anthropic under
+  **its own** credentials and your own subscription, so the request does not
+  carry AITracker's `User-Agent` and AITracker never sees or stores a
+  credential for it. The process is started without session persistence, so
+  the call is not written into the Claude Code log directory that AITracker's
+  own scanners read, and without project settings, hooks, MCP servers or
+  command-running tools, so it receives only the prompt and that input. If you
+  set the optional proxy on the profile, it applies to that process only.
 
 Provider requests are controlled by the local settings and may include the
 text selected for that operation. Do not select sensitive material for a
-remote provider unless you are comfortable with that provider's terms.
+remote provider unless you are comfortable with that provider's terms. The
+same caution applies to the local Claude Code protocol: the data still reaches
+a model provider, just through a tool you already run rather than through
+AITracker's own network stack.
 
 AITracker has no separate product analytics or advertising telemetry pipeline.
 Any network failure is handled as a feature failure or fallback; local data
@@ -56,7 +70,9 @@ collection and browsing remain available where their inputs are local.
 ## Secrets and deletion
 
 Provider credentials are kept in the local encrypted secret store and are not
-written to source-controlled files or browser storage. To remove local data,
+written to source-controlled files or browser storage. A Claude Code (local)
+profile stores no credential of its own: it relies entirely on the
+authentication the `claude` tool already holds on your computer. To remove local data,
 quit AITracker and delete its data directory after making any exports you
 need. You can also remove saved providers and cached update/market data from
 the application settings.

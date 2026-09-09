@@ -23,13 +23,18 @@ import {
   effectiveEndpoint,
   effectiveModel,
   effectiveProtocol,
+  effectiveProxyUrl,
+  isLocalProtocol,
   type ProfileProtocol,
 } from "../ai-orchestration/index.ts";
 import {
   chatHeaders,
   chatUrl,
+  CLAUDE_CODE_DEFAULT_TIMEOUT_MS,
+  createClaudeCodeProvider,
   parseChatCompletion,
   requestBody,
+  type ClaudeCodeProviderOptions,
 } from "../ai-orchestration/api.server.ts";
 import type {
   AIModelProvider,
@@ -58,6 +63,8 @@ const DASHBOARD_INSIGHT_PROMPT = {
 // `runtime-policy.source.json` -> snapshotPolicies.usage.
 const INSIGHT_TTL_MS = 5 * 60 * 1000;
 const INSIGHT_TIMEOUT_MS = 20_000;
+/** Shown on the card when a claude-code profile leaves the model to the CLI. */
+const CLAUDE_CODE_MODEL_LABEL = "claude-code";
 const MAX_LABEL_LENGTH = 80;
 const SENSITIVE_CONTENT =
   /(?:(?:^|\s)~\/|\/(?:Users|home|private|var|tmp)\/|[A-Za-z]:\\|\\\\|\b(?:sk|pk)-[A-Za-z0-9_-]{12,}\b|\bbearer\s+\S+|\b(?:api[ _-]?key|password|secret|authorization|cookie|credential)\b|\b(?:sudo|curl|wget|rm\s+-rf|npm\s+(?:install|publish))\b)/i;
@@ -140,8 +147,17 @@ export interface DashboardAIInsightRuntimeConfig {
   readonly protocol: ProfileProtocol;
   readonly auth: "x-api-key" | "bearer";
   readonly endpoint: string;
+  /** Empty for `claude-code`, which authenticates as the local CLI. */
   readonly apiKey: string;
+  /** Display label and request modelId; never empty. */
   readonly model: string;
+  /**
+   * `claude-code` only: the exact `--model` argument. Undefined means "let the
+   * CLI choose", which is why it is separate from the display `model` above.
+   */
+  readonly cliModel?: string;
+  /** `claude-code` only: optional outbound proxy for the spawned CLI. */
+  readonly proxyUrl?: string;
 }
 
 /**
@@ -173,6 +189,8 @@ export interface DashboardAIInsightServiceOptions {
    */
   readonly resolveConfig?: DashboardAIInsightResolveConfig | null;
   readonly fetch?: typeof fetch;
+  /** Test seam for the `claude-code` protocol; production spawns the CLI. */
+  readonly spawn?: ClaudeCodeProviderOptions["spawn"];
   readonly now?: () => number;
   readonly ttlMs?: number;
   readonly timeoutMs?: number;
@@ -318,10 +336,28 @@ async function resolveActiveProfileConfig(): Promise<DashboardAIInsightRuntimeCo
     const active = await repository.getActiveView();
     if (!active) return null;
     const profile = await repository.getProfileForExecution(active.id);
-    if (!profile?.apiKey) return null;
+    if (!profile) return null;
     const protocol = effectiveProtocol(profile.mode, profile.protocol);
-    const endpoint = effectiveEndpoint(profile);
     const model = effectiveModel(profile);
+
+    // A local profile spawns the user's own CLI, so it has neither an API key
+    // nor an API base URL, and may leave the model to the CLI's default.
+    if (isLocalProtocol(protocol)) {
+      return {
+        protocol,
+        auth: effectiveAuth(profile),
+        endpoint: "",
+        apiKey: "",
+        model: model ?? CLAUDE_CODE_MODEL_LABEL,
+        ...(model ? { cliModel: model } : {}),
+        ...(effectiveProxyUrl(profile)
+          ? { proxyUrl: effectiveProxyUrl(profile) }
+          : {}),
+      };
+    }
+
+    if (!profile.apiKey) return null;
+    const endpoint = effectiveEndpoint(profile);
     if (!endpoint || !model) return null;
     return {
       protocol,
@@ -338,7 +374,24 @@ async function resolveActiveProfileConfig(): Promise<DashboardAIInsightRuntimeCo
 function createDashboardAIInsightProvider(
   config: DashboardAIInsightRuntimeConfig,
   fetchImpl: typeof fetch,
+  spawnImpl?: ClaudeCodeProviderOptions["spawn"],
 ): AIModelProvider {
+  // The local protocol spawns a CLI instead of issuing a request. It is
+  // re-labelled to the registry's provider id so routing stays uniform.
+  if (isLocalProtocol(config.protocol)) {
+    const local = createClaudeCodeProvider({
+      ...(config.cliModel ? { model: config.cliModel } : {}),
+      ...(config.proxyUrl ? { proxyUrl: config.proxyUrl } : {}),
+      ...(spawnImpl ? { spawn: spawnImpl } : {}),
+    });
+    return {
+      providerId: "dashboard-insight",
+      async invoke(request: AIProviderRequest): Promise<AIResponse> {
+        const response = await local.invoke(request);
+        return { ...response, providerId: "dashboard-insight" };
+      },
+    };
+  }
   return {
     providerId: "dashboard-insight",
     async invoke(request: AIProviderRequest): Promise<AIResponse> {
@@ -428,7 +481,13 @@ export function createDashboardAIInsightService(
       : options.resolveConfig;
   const now = options.now ?? Date.now;
   const ttlMs = options.ttlMs ?? INSIGHT_TTL_MS;
-  const timeoutMs = options.timeoutMs ?? INSIGHT_TIMEOUT_MS;
+  // Resolved per refresh: a spawned CLI pays a cold start and a large fixed
+  // system-prompt cost that the HTTP budget does not allow for.
+  const requestTimeoutMs = (config: DashboardAIInsightRuntimeConfig): number =>
+    options.timeoutMs ??
+    (isLocalProtocol(config.protocol)
+      ? CLAUDE_CODE_DEFAULT_TIMEOUT_MS
+      : INSIGHT_TIMEOUT_MS);
   const fetchImpl: typeof fetch = (input, init) =>
     fetchExternal(input, init, options.fetch ?? fetch);
   let cache: CacheEntry | undefined;
@@ -468,7 +527,7 @@ export function createDashboardAIInsightService(
           };
         }
         const registry = createProviderRegistry([
-          createDashboardAIInsightProvider(config, fetchImpl),
+          createDashboardAIInsightProvider(config, fetchImpl, options.spawn),
         ]);
         const executor = createAiExecutor({
           router: createRegistryRouter(registry),
@@ -479,7 +538,7 @@ export function createDashboardAIInsightService(
           modelId: config.model,
           prompt: DASHBOARD_INSIGHT_PROMPT,
           input: { text: payload },
-          timeoutMs,
+          timeoutMs: requestTimeoutMs(config),
         });
         if (result.summary.status !== "completed" || !result.response?.text) {
           return {

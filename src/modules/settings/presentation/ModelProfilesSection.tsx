@@ -32,6 +32,7 @@ import {
   OFFICIAL_ENDPOINT,
   OFFICIAL_MODEL,
   OFFICIAL_MODEL_DISPLAY_NAME,
+  isLocalProtocol,
   protocolMeta,
   recommendedModelDisplayName,
   type ModelProfileInput,
@@ -47,6 +48,32 @@ import {
   testModelProfile,
   upsertModelProfile,
 } from "../../ai-orchestration/index.ts";
+
+/**
+ * i18n keys per protocol. A lookup keeps the selector flat: the copy grew a
+ * fourth entry with `claude-code`, and nested ternaries do not scale.
+ */
+const PROTOCOL_COPY = {
+  openai: {
+    label: "settings.modelProfiles.protocolOpenai",
+    hint: "settings.modelProfiles.protocolOpenaiHint",
+  },
+  "openai-responses": {
+    label: "settings.modelProfiles.protocolOpenaiResponses",
+    hint: "settings.modelProfiles.protocolOpenaiResponsesHint",
+  },
+  anthropic: {
+    label: "settings.modelProfiles.protocolAnthropic",
+    hint: "settings.modelProfiles.protocolAnthropicHint",
+  },
+  "claude-code": {
+    label: "settings.modelProfiles.protocolClaudeCode",
+    hint: "settings.modelProfiles.protocolClaudeCodeHint",
+  },
+} as const satisfies Record<
+  ProfileProtocol,
+  { readonly label: string; readonly hint: string }
+>;
 
 interface FormState {
   readonly id: string | null;
@@ -247,17 +274,31 @@ export function ModelProfilesSection() {
     }
   };
 
-  const formValid =
-    form.mode === "official"
-      ? form.model.trim().length > 0 &&
-        (form.apiKey.trim().length >= 8 || form.storedApiKey)
-      : form.name.trim().length > 0 &&
+  const localProfile = form.mode === "custom" && isLocalProtocol(form.protocol);
+  const formValid = (() => {
+    if (form.mode === "official")
+      return (
         form.model.trim().length > 0 &&
-        (form.apiKey.trim().length === 0 || form.apiKey.trim().length >= 8) &&
-        (form.id !== null || form.apiKey.trim().length >= 8);
+        (form.apiKey.trim().length >= 8 || form.storedApiKey)
+      );
+    if (form.name.trim().length === 0) return false;
+    // The local CLI supplies its own credentials and its own default model.
+    if (localProfile) return true;
+    return (
+      form.model.trim().length > 0 &&
+      (form.apiKey.trim().length === 0 || form.apiKey.trim().length >= 8) &&
+      (form.id !== null || form.apiKey.trim().length >= 8)
+    );
+  })();
 
   const loadModels = async () => {
-    if (form.listing || (form.apiKey.trim() === "" && form.id === null)) return;
+    // A local profile has no API key to gate on: its model list is the CLI's
+    // static aliases, which must be reachable while creating the profile.
+    if (
+      form.listing ||
+      (!localProfile && form.apiKey.trim() === "" && form.id === null)
+    )
+      return;
     setForm((current) => ({ ...current, listing: true, listMsg: "" }));
     try {
       const result = await listRemoteModels({
@@ -271,7 +312,9 @@ export function ModelProfilesSection() {
           ...(form.apiKey.trim() ? { apiKey: form.apiKey.trim() } : {}),
         },
       });
-      const remoteSucceeded = result.ok && result.source === "remote";
+      // "local" is a successful list from a provider without a /models
+      // endpoint; only "fallback" means no list could be produced.
+      const remoteSucceeded = result.ok && result.source !== "fallback";
       const models = remoteSucceeded ? [...(result.models ?? [])] : [];
       setForm((current) => ({
         ...current,
@@ -315,10 +358,16 @@ export function ModelProfilesSection() {
         );
         return;
       }
+      // The local probe runs `claude --version`: it proves the CLI resolves,
+      // not that the session is authenticated, so it must not claim the model
+      // responded.
       toast.success(
-        t("settings.modelProfiles.testSuccess", {
-          latency: result.latencyMs ?? 0,
-        }),
+        t(
+          localProfile
+            ? "settings.modelProfiles.testSuccessLocal"
+            : "settings.modelProfiles.testSuccess",
+          { latency: result.latencyMs ?? 0 },
+        ),
       );
     } catch (error) {
       const ui = toUiError(error);
@@ -383,12 +432,13 @@ export function ModelProfilesSection() {
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <span className="aitracker-label">
           {t("settings.modelProfiles.modelLabel")}{" "}
-          <span className="text-danger">*</span>
+          {!localProfile && <span className="text-danger">*</span>}
         </span>
         <button
           type="button"
           disabled={
-            form.listing || (form.apiKey.trim() === "" && form.id === null)
+            form.listing ||
+            (!localProfile && form.apiKey.trim() === "" && form.id === null)
           }
           onClick={() => void loadModels()}
           className="aitracker-num aitracker-text-caption flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-muted-foreground shadow-sm transition-colors hover:border-border-strong hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
@@ -432,11 +482,13 @@ export function ModelProfilesSection() {
           value={form.model}
           onChange={(event) => updateForm({ model: event.target.value })}
           placeholder={
-            form.mode === "official"
-              ? t("settings.modelProfiles.officialModelFetchHint")
-              : t("settings.modelProfiles.modelFetchHint", {
-                  model: OFFICIAL_MODEL,
-                })
+            localProfile
+              ? t("settings.modelProfiles.localModelHint")
+              : form.mode === "official"
+                ? t("settings.modelProfiles.officialModelFetchHint")
+                : t("settings.modelProfiles.modelFetchHint", {
+                    model: OFFICIAL_MODEL,
+                  })
           }
           maxLength={120}
           className="security-config-input"
@@ -648,81 +700,89 @@ export function ModelProfilesSection() {
                   <div className="aitracker-label mb-1.5">
                     {t("settings.modelProfiles.apiFormatLabel")}
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    {(["openai", "openai-responses", "anthropic"] as const).map(
-                      (protocol) => (
-                        <button
-                          key={protocol}
-                          type="button"
-                          onClick={() =>
-                            updateForm({
-                              protocol,
-                              models: [],
-                            })
-                          }
-                          className={`rounded-sm border px-2.5 py-2 text-left transition-colors ${form.protocol === protocol ? "border-primary bg-primary/10" : "border-border hover:border-border-strong"}`}
-                        >
-                          <span className="aitracker-text-body-sm block text-foreground">
-                            {t(
-                              protocol === "openai"
-                                ? "settings.modelProfiles.protocolOpenai"
-                                : protocol === "openai-responses"
-                                  ? "settings.modelProfiles.protocolOpenaiResponses"
-                                  : "settings.modelProfiles.protocolAnthropic",
-                            )}
-                          </span>
-                          <span className="aitracker-text-caption mt-0.5 block text-muted-foreground">
-                            {t(
-                              protocol === "openai"
-                                ? "settings.modelProfiles.protocolOpenaiHint"
-                                : protocol === "openai-responses"
-                                  ? "settings.modelProfiles.protocolOpenaiResponsesHint"
-                                  : "settings.modelProfiles.protocolAnthropicHint",
-                            )}
-                          </span>
-                        </button>
-                      ),
-                    )}
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {(
+                      [
+                        "openai",
+                        "openai-responses",
+                        "anthropic",
+                        "claude-code",
+                      ] as const
+                    ).map((protocol) => (
+                      <button
+                        key={protocol}
+                        type="button"
+                        onClick={() =>
+                          updateForm({
+                            protocol,
+                            models: [],
+                          })
+                        }
+                        className={`rounded-sm border px-2.5 py-2 text-left transition-colors ${form.protocol === protocol ? "border-primary bg-primary/10" : "border-border hover:border-border-strong"}`}
+                      >
+                        <span className="aitracker-text-body-sm block text-foreground">
+                          {t(PROTOCOL_COPY[protocol].label)}
+                        </span>
+                        <span className="aitracker-text-caption mt-0.5 block text-muted-foreground">
+                          {t(PROTOCOL_COPY[protocol].hint)}
+                        </span>
+                      </button>
+                    ))}
                   </div>
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="min-w-0">
-                    <div className="aitracker-label mb-1">
-                      {t("settings.modelProfiles.apiKeyLabel")}
-                    </div>
-                    <input
-                      type="password"
-                      value={form.apiKey}
-                      onChange={(event) =>
-                        updateForm({ apiKey: event.target.value })
-                      }
-                      placeholder={t(
-                        "settings.modelProfiles.apiKeyPlaceholder",
+                  {!localProfile && (
+                    <div className="min-w-0">
+                      <div className="aitracker-label mb-1">
+                        {t("settings.modelProfiles.apiKeyLabel")}
+                      </div>
+                      <input
+                        type="password"
+                        value={form.apiKey}
+                        onChange={(event) =>
+                          updateForm({ apiKey: event.target.value })
+                        }
+                        placeholder={t(
+                          "settings.modelProfiles.apiKeyPlaceholder",
+                        )}
+                        autoComplete="new-password"
+                        className="security-config-input"
+                      />
+                      {form.storedApiKey && (
+                        <p className="aitracker-text-caption mt-1 text-muted-foreground">
+                          {t("settings.modelProfiles.apiKeyConfigured")}
+                        </p>
                       )}
-                      autoComplete="new-password"
-                      className="security-config-input"
-                    />
-                    {form.storedApiKey && (
-                      <p className="aitracker-text-caption mt-1 text-muted-foreground">
-                        {t("settings.modelProfiles.apiKeyConfigured")}
-                      </p>
-                    )}
-                  </div>
+                    </div>
+                  )}
                   <div className="min-w-0">
                     <div className="aitracker-label mb-1">
-                      {t("settings.modelProfiles.endpointLabel")}
+                      {t(
+                        localProfile
+                          ? "settings.modelProfiles.proxyLabel"
+                          : "settings.modelProfiles.endpointLabel",
+                      )}
                     </div>
                     <input
                       value={form.endpoint}
                       onChange={(event) =>
                         updateForm({ endpoint: event.target.value })
                       }
-                      placeholder={protocolMeta[form.protocol].endpoint}
+                      placeholder={
+                        localProfile
+                          ? t("settings.modelProfiles.proxyPlaceholder")
+                          : protocolMeta[form.protocol].endpoint
+                      }
                       type="url"
                       autoComplete="url"
                       className="security-config-input"
                     />
+                    {localProfile && (
+                      <p className="aitracker-text-caption mt-1 text-muted-foreground">
+                        {t("settings.modelProfiles.proxyHint")}
+                      </p>
+                    )}
                   </div>
                 </div>
 

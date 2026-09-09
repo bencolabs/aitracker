@@ -65,6 +65,13 @@ export const settings = {
     apiKeyPlaceholder: "sk-••••••",
     apiKeyHint: "仅保存于本机服务端；编辑时留空表示不修改",
     apiKeyConfigured: "已安全保存（留空不修改）",
+    protocolClaudeCode: "Claude Code（本地）",
+    protocolClaudeCodeHint:
+      "调用本机已安装的 Claude Code CLI，无需 API Key，消耗你自己的订阅额度",
+    localModelHint: "可留空，交给 CLI 使用默认模型",
+    proxyLabel: "代理（可选）",
+    proxyPlaceholder: "http://127.0.0.1:7890",
+    proxyHint: "仅作用于启动的 CLI 子进程。留空则继承应用所在环境的代理设置。",
     endpointLabel: "Base URL",
     modelLabel: "模型",
     modelPlaceholder: "例如：deepseek-chat",
@@ -89,6 +96,8 @@ export const settings = {
     missingKey: "缺少 API Key",
     test: "测试连接",
     testing: "测试中…",
+    testSuccessLocal:
+      "已找到并可调用本地 CLI（{latency}ms）—— 登录状态在首次实际调用时才验证",
     testSuccess: "连接测试通过，模型响应正常（{latency}ms）",
     cancelEdit: "取消编辑",
     savedToast: "已保存「{name}」",

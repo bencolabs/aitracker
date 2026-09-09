@@ -111,6 +111,7 @@ assert.deepEqual(files, [
   "0001_initial_schema.ts",
   "0002_drop_legacy_usage_tables.ts",
   "0003_tool_data_roots.ts",
+  "0004_claude_code_protocol.ts",
   "index.ts",
 ]);
 assert.ok(MIGRATIONS.length >= 1, "at least the baseline migration must exist");

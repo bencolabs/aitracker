@@ -4,6 +4,10 @@ import type { ModelConfig } from "@estelwalks/agent-threat-scanner";
 
 import { ENV } from "../../../lib/app-config.ts";
 import { SECURITY_LLM_REVIEW_PREF_KEY } from "../llm-review.contracts.ts";
+import {
+  isLocalProtocol,
+  type ProfileProtocol,
+} from "../../ai-orchestration/index.ts";
 import type { PreferenceValue } from "../../settings/infrastructure/sqlite-preference-repository.server.ts";
 import { createNodeRuntimeIdentity } from "../../../platform/runtime/node-runtime-identity.ts";
 import type {
@@ -120,7 +124,7 @@ export function createDevSecretStorage(): SecretStoragePort {
 
 interface StoredModelProfile {
   readonly mode: "official" | "custom";
-  readonly protocol: "openai" | "openai-responses" | "anthropic";
+  readonly protocol: ProfileProtocol;
   readonly apiKey?: string;
   readonly endpoint?: string;
   readonly model?: string;
@@ -129,10 +133,10 @@ interface StoredModelProfile {
 type ScannerProtocol = "openai-responses" | "openai-completions" | "anthropic";
 
 /** Maps the app's legacy profile label to the published scanner protocol. */
-function scannerProtocol(profile: StoredModelProfile): ScannerProtocol {
-  return profile.protocol === "openai"
-    ? "openai-completions"
-    : profile.protocol;
+function scannerProtocol(
+  protocol: Exclude<ProfileProtocol, "claude-code">,
+): ScannerProtocol {
+  return protocol === "openai" ? "openai-completions" : protocol;
 }
 
 export function toSecurityModelConfig(
@@ -141,6 +145,10 @@ export function toSecurityModelConfig(
 ): ModelConfig | undefined {
   if (!enabled) return undefined;
   if (!profile?.apiKey) return undefined;
+  // The published scanner is configured with an HTTP endpoint and an API key.
+  // A claude-code profile has neither — it spawns the user's local CLI — so
+  // scanner LLM review stays off rather than falling back to another profile.
+  if (isLocalProtocol(profile.protocol)) return undefined;
   const endpoint =
     profile.mode === "official"
       ? "https://api.deepseek.com/v1"
@@ -158,7 +166,7 @@ export function toSecurityModelConfig(
     timeoutMs: 120_000,
     maxAgentTurns: 8,
   };
-  config.provider = scannerProtocol(profile);
+  config.provider = scannerProtocol(profile.protocol);
   return config as ModelConfig;
 }
 

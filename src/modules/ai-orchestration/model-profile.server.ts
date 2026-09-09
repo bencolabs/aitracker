@@ -19,6 +19,8 @@ import {
   effectiveEndpoint,
   effectiveModel,
   effectiveProtocol,
+  effectiveProxyUrl,
+  isLocalProtocol,
   validateModelProfileInput,
   type ModelListResult,
   type ModelProfile,
@@ -36,6 +38,12 @@ import type {
   AIResponse,
 } from "./contracts.ts";
 import { fetchExternal } from "../../lib/http/external-request.server.ts";
+
+/**
+ * Documented Claude Code CLI aliases. Each always resolves to the current
+ * model in its tier, so the list needs no maintenance when models ship.
+ */
+const CLAUDE_CODE_MODEL_ALIASES = ["haiku", "sonnet", "opus", "fable"] as const;
 
 class ProfileProviderInvocationError extends Error {
   readonly name = "ProfileProviderInvocationError";
@@ -291,10 +299,27 @@ export function createModelProfileNetworkOperations(options?: {
   ): Promise<ModelProfileTestResult> {
     const validation = validateModelProfileInput(input, input.id !== undefined);
     if (!validation.ok) return validation;
+    const protocol = effectiveProtocol(input.mode, input.protocol);
+
+    // The local protocol has no endpoint or credential to exercise; the
+    // meaningful check is whether the CLI (and any proxy) is reachable.
+    if (isLocalProtocol(protocol)) {
+      const startedAt = Date.now();
+      const { probeClaudeCodeAvailability } =
+        await import("./infrastructure/claude-code-provider.server.ts");
+      const proxyUrl = effectiveProxyUrl(input);
+      const probe = await probeClaudeCodeAvailability(
+        proxyUrl ? { proxyUrl } : {},
+      );
+      const latencyMs = Math.max(0, Date.now() - startedAt);
+      return probe.ok
+        ? { ok: true, latencyMs }
+        : { ok: false, latencyMs, errorCode: "errors.modelProfile.testFailed" };
+    }
+
     const apiKey = input.apiKey?.trim() ?? "";
     if (!apiKey)
       return { ok: false, errorCode: "errors.modelProfile.apiKeyRequired" };
-    const protocol = effectiveProtocol(input.mode, input.protocol);
     const endpoint = effectiveEndpoint(input);
     const model = effectiveModel(input);
     if (!model)
@@ -350,6 +375,19 @@ export function createModelProfileNetworkOperations(options?: {
   ): Promise<ModelListResult> {
     const endpoint = effectiveEndpoint(input);
     const protocol = effectiveProtocol(input.mode, input.protocol);
+
+    // The CLI exposes no /models endpoint. These are its documented aliases,
+    // which always resolve to the current model behind each tier; an explicit
+    // full model id may still be typed by hand.
+    if (isLocalProtocol(protocol)) {
+      return {
+        ok: true,
+        models: CLAUDE_CODE_MODEL_ALIASES,
+        source: "local",
+        message: "Claude Code CLI model aliases.",
+      };
+    }
+
     const failureResult = (reason: string): ModelListResult => ({
       ok: false,
       source: "fallback",

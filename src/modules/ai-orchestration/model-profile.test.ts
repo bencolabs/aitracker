@@ -18,6 +18,7 @@ import type { ModelProfile, ModelProfileInput } from "./model-profile.ts";
 import {
   effectiveEndpoint,
   effectiveModel,
+  effectiveProxyUrl,
   effectiveProtocol,
   RECOMMENDED_MODEL_OPTIONS,
   validateModelProfileInput,
@@ -1508,4 +1509,105 @@ test("createProfileBackedProvider: anthropic max_tokens stop maps to length", as
   const response = await invokeWith(provider, {});
   assert.equal(response.text, "partial");
   assert.equal(response.finishReason, "length");
+});
+
+// ---------------------------------------------------------------------------
+// claude-code: a profile with no API key, no base URL and an optional model
+// ---------------------------------------------------------------------------
+
+test("validate: a claude-code profile needs neither an API key nor a model", () => {
+  const result = validateModelProfileInput({
+    mode: "custom",
+    protocol: "claude-code",
+    name: "Local Claude Code",
+  });
+  assert.deepEqual(result, { ok: true });
+});
+
+test("validate: a claude-code profile still requires a name", () => {
+  const result = validateModelProfileInput({
+    mode: "custom",
+    protocol: "claude-code",
+    name: "   ",
+  });
+  assert.equal(result.ok, false);
+});
+
+test("validate: an HTTP protocol still requires a key and a model", () => {
+  assert.equal(
+    validateModelProfileInput({
+      mode: "custom",
+      protocol: "anthropic",
+      name: "Remote",
+      model: "claude-sonnet-5",
+    }).ok,
+    false,
+    "a missing API key must still be rejected for HTTP protocols",
+  );
+  assert.equal(
+    validateModelProfileInput({
+      mode: "custom",
+      protocol: "anthropic",
+      name: "Remote",
+      apiKey: VALID_KEY,
+    }).ok,
+    false,
+    "a missing model must still be rejected for HTTP protocols",
+  );
+});
+
+test("validate: a claude-code model, when given, must still be well formed", () => {
+  assert.equal(
+    validateModelProfileInput({
+      mode: "custom",
+      protocol: "claude-code",
+      name: "Local",
+      model: "haiku",
+    }).ok,
+    true,
+  );
+  assert.equal(
+    validateModelProfileInput({
+      mode: "custom",
+      protocol: "claude-code",
+      name: "Local",
+      model: "not a model id!",
+    }).ok,
+    false,
+  );
+});
+
+test("effectiveProxyUrl: only claude-code reads the endpoint as a proxy", () => {
+  assert.equal(
+    effectiveProxyUrl({
+      protocol: "claude-code",
+      endpoint: "http://127.0.0.1:2334",
+    }),
+    "http://127.0.0.1:2334",
+  );
+  assert.equal(
+    effectiveProxyUrl({ protocol: "claude-code", endpoint: "  " }),
+    undefined,
+    "a blank endpoint means no proxy, not an empty proxy",
+  );
+  assert.equal(
+    effectiveProxyUrl({
+      protocol: "anthropic",
+      endpoint: "https://api.anthropic.com/v1",
+    }),
+    undefined,
+    "an HTTP protocol's endpoint is a base URL and must never be used as a proxy",
+  );
+});
+
+test("validate: a claude-code proxy must be a credential-free http(s) URL", () => {
+  assert.equal(
+    validateModelProfileInput({
+      mode: "custom",
+      protocol: "claude-code",
+      name: "Local",
+      endpoint: "http://user:pass@127.0.0.1:2334",
+    }).ok,
+    false,
+  );
 });

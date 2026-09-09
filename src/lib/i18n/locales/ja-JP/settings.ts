@@ -67,6 +67,14 @@ export const settings = {
     apiKeyPlaceholder: "sk-••••••",
     apiKeyHint: "サーバー側のみに保存。編集時に空欄のままだと変更されません",
     apiKeyConfigured: "安全に保存済み（空欄で維持）",
+    protocolClaudeCode: "Claude Code（ローカル）",
+    protocolClaudeCodeHint:
+      "インストール済みの Claude Code CLI を実行します。API キー不要で、ご自身のサブスクリプション枠を消費します",
+    localModelHint: "空欄可 — CLI が既定のモデルを選択します",
+    proxyLabel: "プロキシ（任意）",
+    proxyPlaceholder: "http://127.0.0.1:7890",
+    proxyHint:
+      "起動する CLI プロセスにのみ適用されます。空欄の場合はアプリの環境設定を継承します。",
     endpointLabel: "Base URL",
     modelLabel: "モデル",
     modelPlaceholder: "例：deepseek-chat",
@@ -92,6 +100,8 @@ export const settings = {
     missingKey: "API Key がありません",
     test: "接続テスト",
     testing: "テスト中…",
+    testSuccessLocal:
+      "ローカル CLI を検出し実行できました（{latency}ms）— サインインは初回実行時に確認されます",
     testSuccess: "接続テスト成功、モデルが応答しました（{latency}ms）",
     cancelEdit: "編集をキャンセル",
     savedToast: "「{name}」を保存しました",

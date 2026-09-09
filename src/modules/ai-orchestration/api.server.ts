@@ -11,3 +11,12 @@ export {
   type ChatResponseClassification,
   type ClassifiedChatResponse,
 } from "./model-profile.server.ts";
+export {
+  CLAUDE_CODE_DEFAULT_TIMEOUT_MS,
+  CLAUDE_CODE_PROVIDER_ID,
+  ClaudeCodeInvocationError,
+  createClaudeCodeProvider,
+  probeClaudeCodeAvailability,
+  stripCodeFence,
+  type ClaudeCodeProviderOptions,
+} from "./infrastructure/claude-code-provider.server.ts";

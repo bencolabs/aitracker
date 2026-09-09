@@ -67,6 +67,14 @@ export const settings = {
     apiKeyPlaceholder: "sk-••••••",
     apiKeyHint: "Stored server-side only; leave blank when editing to keep it",
     apiKeyConfigured: "Stored securely (leave blank to keep)",
+    protocolClaudeCode: "Claude Code (local)",
+    protocolClaudeCodeHint:
+      "Runs your installed Claude Code CLI. No API key; uses your own subscription quota.",
+    localModelHint: "Optional — the CLI picks its default model",
+    proxyLabel: "Proxy (optional)",
+    proxyPlaceholder: "http://127.0.0.1:7890",
+    proxyHint:
+      "Applied to the spawned CLI only. Leave empty to inherit the app environment.",
     endpointLabel: "Base URL",
     modelLabel: "Model",
     modelPlaceholder: "e.g. deepseek-chat",
@@ -92,6 +100,8 @@ export const settings = {
     missingKey: "Missing API key",
     test: "Test connection",
     testing: "Testing…",
+    testSuccessLocal:
+      "CLI found and reachable ({latency}ms) — sign-in is verified on first use",
     testSuccess: "Connection OK, model responded ({latency}ms)",
     cancelEdit: "Cancel edit",
     savedToast: "Saved “{name}”",

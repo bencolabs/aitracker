@@ -11,6 +11,8 @@ import { bigintToSafeNumber } from "../../../platform/database/infrastructure/no
 import {
   effectiveProtocol,
   defaultAuth,
+  isLocalProtocol,
+  isProfileProtocol,
   OFFICIAL_ENDPOINT,
   OFFICIAL_MODEL,
   toModelProfileView,
@@ -168,9 +170,7 @@ function readProfileRow(row: Readonly<Record<string, unknown>>): ProfileRow {
     typeof row.profile_id !== "string" ||
     typeof row.name !== "string" ||
     (row.mode !== "official" && row.mode !== "custom") ||
-    (row.protocol !== "openai" &&
-      row.protocol !== "openai-responses" &&
-      row.protocol !== "anthropic") ||
+    !isProfileProtocol(row.protocol) ||
     (row.auth !== null && row.auth !== "x-api-key" && row.auth !== "bearer") ||
     (row.endpoint !== null && typeof row.endpoint !== "string") ||
     (row.model !== null && typeof row.model !== "string") ||
@@ -278,7 +278,10 @@ export function createSqliteModelProfileRepository(
       const existing = input.id ? getRow(input.id) : undefined;
       if (isUpdate && !existing)
         throw new ModelProfileError("errors.modelProfile.notFound");
+      // A local profile authenticates as the installed CLI and stores no
+      // secret of its own, so the key requirement does not apply to it.
       if (
+        !isLocalProtocol(effectiveProtocol(input.mode, input.protocol)) &&
         (input.mode === "custom" || input.mode === "official") &&
         !input.apiKey?.trim() &&
         !existing?.secret_id
