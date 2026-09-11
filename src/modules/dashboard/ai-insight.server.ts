@@ -66,24 +66,29 @@ const INSIGHT_TIMEOUT_MS = 20_000;
 /** Shown on the card when a claude-code profile leaves the model to the CLI. */
 const CLAUDE_CODE_MODEL_LABEL = "claude-code";
 const MAX_LABEL_LENGTH = 80;
+/** Output limits shared by the schema and the clamp below. */
+const MAX_HEADLINE_LENGTH = 180;
+const MAX_TITLE_LENGTH = 80;
+const MAX_DETAIL_LENGTH = 260;
+const MAX_INSIGHT_ITEMS = 3;
 const SENSITIVE_CONTENT =
   /(?:(?:^|\s)~\/|\/(?:Users|home|private|var|tmp)\/|[A-Za-z]:\\|\\\\|\b(?:sk|pk)-[A-Za-z0-9_-]{12,}\b|\bbearer\s+\S+|\b(?:api[ _-]?key|password|secret|authorization|cookie|credential)\b|\b(?:sudo|curl|wget|rm\s+-rf|npm\s+(?:install|publish))\b)/i;
 
 const outputSchema = z
   .object({
-    headline: z.string().trim().min(1).max(180),
+    headline: z.string().trim().min(1).max(MAX_HEADLINE_LENGTH),
     insights: z
       .array(
         z
           .object({
-            title: z.string().trim().min(1).max(80),
-            detail: z.string().trim().min(1).max(260),
+            title: z.string().trim().min(1).max(MAX_TITLE_LENGTH),
+            detail: z.string().trim().min(1).max(MAX_DETAIL_LENGTH),
             severity: z.enum(["info", "attention", "risk"]),
           })
           .strict(),
       )
       .min(1)
-      .max(3),
+      .max(MAX_INSIGHT_ITEMS),
   })
   .strict();
 
@@ -300,10 +305,43 @@ function containsSensitiveText(value: string): boolean {
   return SENSITIVE_CONTENT.test(value);
 }
 
+/**
+ * CLI gateways behind local `claude` remotes (GLM and similar) ignore soft
+ * length guidance, and the schema caps are display limits rather than protocol
+ * limits — so clamp candidate fields to the shared limits instead of throwing
+ * the whole insight away. Non-string values and severity pass through for the
+ * schema to judge.
+ */
+function clampInsightCandidate(value: unknown): unknown {
+  if (typeof value !== "object" || value === null) return value;
+  const record = value as Record<string, unknown>;
+  const clampText = (text: unknown, max: number): unknown =>
+    typeof text === "string" ? text.slice(0, max) : text;
+  const headline = clampText(record.headline, MAX_HEADLINE_LENGTH);
+  if (!Array.isArray(record.insights)) return { ...record, headline };
+  return {
+    ...record,
+    headline,
+    insights: record.insights
+      .slice(0, MAX_INSIGHT_ITEMS)
+      .map((item: unknown) => {
+        if (typeof item !== "object" || item === null) return item;
+        const entry = item as Record<string, unknown>;
+        return {
+          ...entry,
+          title: clampText(entry.title, MAX_TITLE_LENGTH),
+          detail: clampText(entry.detail, MAX_DETAIL_LENGTH),
+        };
+      }),
+  };
+}
+
 function parseInsightOutput(value: string): DashboardAIInsight | null {
   if (value.length > 2_000 || containsSensitiveText(value)) return null;
   try {
-    const parsed = outputSchema.safeParse(JSON.parse(value));
+    const parsed = outputSchema.safeParse(
+      clampInsightCandidate(JSON.parse(value)),
+    );
     if (!parsed.success) return null;
     const insight = parsed.data;
     if (
